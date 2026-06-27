@@ -1,0 +1,7 @@
+id_ret,date_incident,heure_incident,coordination,type_voie,nb_vehicules_derailles,position_vehicule,etat_voie,position_grues,duree_reelle_heures,faits_saillants,cause_probable,submitted_by,submitted_at,mois,saison
+RET-20260625-133037,2026-06-25,10,1,1,2,1,2,2,20.0,,,admin,2026-06-25T13:30:37.525612,6,2
+RET-20260625-133715,2026-06-25,10,1,1,2,1,2,2,20.0,,,cellule_crise,2026-06-25T13:37:15.543064,6,2
+RET-20260625-133718,2026-06-25,10,1,1,2,1,2,2,20.0,,,cellule_crise,2026-06-25T13:37:18.111194,6,2
+RET-20260625-133829,2026-06-25,10,1,1,2,1,2,2,20.0,,,cellule_crise,2026-06-25T13:38:29.811004,6,2
+RET-20260625-133836,2026-06-25,10,1,1,2,1,2,2,20.0,,,cellule_crise,2026-06-25T13:38:36.544818,6,2
+RET-20260625-133842,2026-06-25,10,1,1,2,1,2,2,20.0,,,cellule_crise,2026-06-25T13:38:42.516068,6,2

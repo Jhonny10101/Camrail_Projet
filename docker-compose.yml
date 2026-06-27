@@ -1,0 +1,141 @@
+version: "3.9"
+
+# ════════════════════════════════════════════════════════════════
+#  CAMRAIL — Stack Complète Intranet
+#  Services : API FastAPI · Frontend React · Nginx Reverse Proxy
+#  Déploiement : Serveur intranet CAMRAIL (Ubuntu 22.04)
+# ════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Backend FastAPI + ML ──────────────────────────────────────
+  camrail-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: camrail-api
+    restart: unless-stopped
+    environment:
+      - CAMRAIL_SECRET_KEY=${CAMRAIL_SECRET_KEY:-camrail-secret-changez-en-prod}
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persistance données RET et modèles entraînés
+      - camrail_data:/app/data
+      - camrail_models:/app/models
+      - camrail_auth:/app/auth
+    networks:
+      - camrail_internal
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Frontend React (build statique servi par Node) ────────────
+  camrail-frontend:
+    image: node:20-alpine
+    container_name: camrail-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install && npm run build && npx serve -s build -p 3000"
+    volumes:
+      - ./frontend:/app
+    networks:
+      - camrail_internal
+    depends_on:
+      camrail-api:
+        condition: service_healthy
+    environment:
+      - REACT_APP_API_URL=https://camrail-predict.intranet.cm/api
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────
+  camrail-nginx:
+    image: nginx:1.27-alpine
+    container_name: camrail-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/camrail.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - camrail_internal
+      - camrail_external
+    depends_on:
+      - camrail-api
+      - camrail-frontend
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  # ── Watchtower (mises à jour automatiques des images) ─────────
+  watchtower:
+    image: containrrr/watchtower
+    container_name: camrail-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400   # Vérification quotidienne
+      - WATCHTOWER_INCLUDE_STOPPED=false
+    profiles:
+      - production                        # Activer avec --profile production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+
+# ── Volumes persistants ──────────────────────────────────────────
+volumes:
+  camrail_data:
+    name: camrail_data
+    driver: local
+  camrail_models:
+    name: camrail_models
+    driver: local
+  camrail_auth:
+    name: camrail_auth
+    driver: local
+  nginx_logs:
+    name: camrail_nginx_logs
+    driver: local
+
+# ── Réseaux ──────────────────────────────────────────────────────
+networks:
+  camrail_internal:
+    name: camrail_internal
+    driver: bridge
+    internal: true          # Pas d'accès internet direct
+  camrail_external:
+    name: camrail_external
+    driver: bridge          # Nginx exposé uniquement

@@ -1,0 +1,65 @@
+{
+  "features": [
+    "nb_vehicules_derailles",
+    "position_vehicule",
+    "etat_voie",
+    "position_grues",
+    "type_voie",
+    "heure_incident",
+    "coordination",
+    "mois",
+    "saison"
+  ],
+  "target": "duree_occupation_heures",
+  "metrics": {
+    "mae": 2.427,
+    "rmse": 3.049,
+    "r2_train": 0.8579,
+    "r2_cv_mean": 0.6938,
+    "r2_cv_std": 0.0236,
+    "oob_score": 0.7,
+    "ic85_coverage": 0.825,
+    "n_samples": 200,
+    "n_features": 9
+  },
+  "feature_importance": [
+    {
+      "feature": "nb_vehicules_derailles",
+      "importance": 0.3857
+    },
+    {
+      "feature": "heure_incident",
+      "importance": 0.2084
+    },
+    {
+      "feature": "type_voie",
+      "importance": 0.1323
+    },
+    {
+      "feature": "etat_voie",
+      "importance": 0.0677
+    },
+    {
+      "feature": "mois",
+      "importance": 0.0594
+    },
+    {
+      "feature": "position_grues",
+      "importance": 0.0439
+    },
+    {
+      "feature": "coordination",
+      "importance": 0.0381
+    },
+    {
+      "feature": "saison",
+      "importance": 0.0365
+    },
+    {
+      "feature": "position_vehicule",
+      "importance": 0.028
+    }
+  ],
+  "model_version": "0.3",
+  "training_date": "2026-06-15"
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "username": "admin",
+    "full_name": "Administrateur Syst\u00e8me",
+    "role": "ADMIN",
+    "coordination": null,
+    "hashed_password": "$5$rounds=535000$MwUt7j00OMwROcyT$DFiupRTiPtZ6/bzP8sI7sNAw/s9LqqgGJCQly/4BJb/",
+    "disabled": false
+  },
+  {
+    "username": "cellule_crise",
+    "full_name": "Cellule de Crise CAMRAIL",
+    "role": "CELLULE_CRISE",
+    "coordination": null,
+    "hashed_password": "$5$rounds=535000$n4FaQWED4w.Cr0U3$t3773H1UbTgFK7dKdwMj.N6EnaEOKU2EvqBY1RvmJt/",
+    "disabled": false
+  },
+  {
+    "username": "coord_nord",
+    "full_name": "Coordination Nord",
+    "role": "CELLULE_CRISE",
+    "coordination": "Nord",
+    "hashed_password": "$5$rounds=535000$vbQ0bPJHTBVMhn/p$fk93M4px2aTiJEe6KZKXJhEIr6wkjPZ0viZH5FJbgb6",
+    "disabled": false
+  },
+  {
+    "username": "coord_sud",
+    "full_name": "Coordination Sud",
+    "role": "CELLULE_CRISE",
+    "coordination": "Sud",
+    "hashed_password": "$5$rounds=535000$xvYFyc17TYyYfFNs$w6Ka9se1Xh.rBfgIjI2uMBBFdrP8JgvJ1tiX1omC81D",
+    "disabled": false
+  },
+  {
+    "username": "dmat",
+    "full_name": "Direction du Mat\u00e9riel (DMAT)",
+    "role": "OPERATEUR",
+    "coordination": null,
+    "hashed_password": "$5$rounds=535000$vvp6h7al03qd5fwJ$bHrSn2ZyXEDz5lq6dvCkawBTv84WLxF4VZhDC8qbfBA",
+    "disabled": false
+  },
+  {
+    "username": "mobirail",
+    "full_name": "MOBIRAIL Operating Manager",
+    "role": "OPERATEUR",
+    "coordination": null,
+    "hashed_password": "$5$rounds=535000$QXlnvygalAI2FELe$pu0PDA4rVOdf9dW1jtKFSWveZXgoYqw93ie4C3foAN3",
+    "disabled": false
+  }
+]
