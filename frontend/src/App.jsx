@@ -1,4 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
+
+// ─── Hook responsive ─────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+}
 import { generatePredictionPDF } from "./PdfExport";
 import { CAMRAIL_LOGO_B64 } from "./camrailLogo";
 
@@ -8,7 +19,7 @@ const C = {
   green: "#1A7A4A", orange: "#E07B00",
 };
 
-const API_BASE = "https://camrail-projet.onrender.com";
+const API_BASE = "http://localhost:8000";
 
 // ─── API helpers ────────────────────────────────────────────────
 async function apiCall(endpoint, options = {}, token = null) {
@@ -143,16 +154,18 @@ function LoginPage({ onLogin }) {
       fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
       <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <div style={{ background: C.red, borderRadius: 12, padding: "10px 20px",
-          fontWeight: 900, color: C.white, fontSize: 28, letterSpacing: 2, display: "inline-block" }}>
-          CAMRAIL
+        <div style={{ background: C.white, borderRadius: 16, padding: "14px 28px",
+          display: "inline-block", marginBottom: 12,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+          <img src={CAMRAIL_LOGO_B64} alt="CAMRAIL"
+            style={{ width: 160, height: "auto", display: "block" }} />
         </div>
         <div style={{ color: C.silver, marginTop: 10, fontSize: 14 }}>
           Modèle Prédictif — Durées d'Occupation de Cantons
         </div>
       </div>
 
-      <Card style={{ width: 360, padding: 32 }}>
+      <Card style={{ width: 360, padding:32 }}>
         <h2 style={{ margin: "0 0 24px", fontSize: 18, fontWeight: 800, color: C.navy, textAlign: "center" }}>
           🔐 Connexion Intranet
         </h2>
@@ -195,27 +208,33 @@ function LoginPage({ onLogin }) {
 function Header({ user, onLogout, apiStatus }) {
   const roleColors = { ADMIN: C.red, CELLULE_CRISE: C.navy, OPERATEUR: C.steel };
   return (
-    <div style={{ background: C.navy, padding: "0 24px", boxShadow: "0 2px 16px rgba(0,0,0,0.3)" }}>
+    <div style={{ background: C.navy, padding: "0 16px", boxShadow: "0 2px 16px rgba(0,0,0,0.3)" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", display: "flex",
-        alignItems: "center", justifyContent: "space-between", padding: "12px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: C.red, borderRadius: 8, padding: "6px 12px",
-            fontWeight: 900, color: C.white, fontSize: 18, letterSpacing: 1 }}>CAMRAIL</div>
+        alignItems: "center", justifyContent: "space-between", padding: "10px 0",
+        flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ background: C.white, borderRadius: 8, padding: "5px 12px",
+            display: "flex", alignItems: "center",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+            <img src={CAMRAIL_LOGO_B64} alt="CAMRAIL"
+              style={{ height: 30, width: "auto", display: "block" }} />
+          </div>
+          <div style={{ width: 1, height: 32, background: C.steel }} />
           <div>
-            <div style={{ color: C.white, fontSize: 14, fontWeight: 700 }}>Modèle Prédictif</div>
-            <div style={{ color: C.silver, fontSize: 11 }}>Durées d'Occupation de Cantons</div>
+            <div style={{ color: C.white, fontSize: 13, fontWeight: 700 }}>Modèle Prédictif</div>
+            <div style={{ color: C.silver, fontSize: 10 }}>Durées d'Occupation de Cantons</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <Badge color={apiStatus === "ok" ? C.green : C.red}>
             {apiStatus === "ok" ? "● API CONNECTÉE" : "● API HORS LIGNE"}
           </Badge>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-            <span style={{ color: C.white, fontSize: 13, fontWeight: 700 }}>{user.full_name}</span>
+            <span style={{ color: C.white, fontSize: 12, fontWeight: 700 }}>{user.full_name}</span>
             <Badge color={roleColors[user.role] || C.steel}>{user.role}</Badge>
           </div>
           <button onClick={onLogout} style={{ background: "transparent", border: `1px solid ${C.silver}`,
-            color: C.silver, padding: "6px 12px", borderRadius: 6, fontSize: 12,
+            color: C.silver, padding: "6px 10px", borderRadius: 6, fontSize: 11,
             cursor: "pointer", fontWeight: 600 }}>
             Déconnexion
           </button>
@@ -227,7 +246,8 @@ function Header({ user, onLogout, apiStatus }) {
 
 // ─── App principale ──────────────────────────────────────────────
 export default function CamrailApp() {
-  const [auth, setAuth]           = useState(null); // { access_token, user }
+  const isMobile = useIsMobile();
+  const [auth, setAuth]           = useState(null);
   const [activeTab, setActiveTab] = useState("prediction");
   const [apiStatus, setApiStatus] = useState("unknown");
 
@@ -261,6 +281,16 @@ export default function CamrailApp() {
   });
   const [retLoading, setRetLoading] = useState(false);
   const [retMsg, setRetMsg]         = useState(null);
+
+  // Historique prédictions
+  const [predHist, setPredHist]   = useState(null);
+  const [predStats, setPredStats] = useState(null);
+  const [predLoading2, setPredLoading2] = useState(false);
+
+  // Validation
+  const [valForm, setValForm] = useState({ id_prediction:'', duree_predite:0, duree_reelle:0, heure_reelle:'', commentaire:'' });
+  const [valMsg, setValMsg]   = useState(null);
+  const [valLoading, setValLoading] = useState(false);
 
   // Admin
   const [users, setUsers]       = useState([]);
@@ -346,6 +376,18 @@ export default function CamrailApp() {
     finally { setRetraining(false); }
   };
 
+  const handleValider = async () => {
+    setValLoading(true); setValMsg(null);
+    try {
+      const resp = await validerPrediction(token, valForm);
+      setValMsg({ type: 'success', message: `✅ ${resp.message}` });
+      // Rafraîchir l'historique
+      fetchPredictionsHistorique(token).then(setPredHist);
+      fetchPredictionStats(token).then(setPredStats);
+    } catch(e) { setValMsg({ type: 'error', message: `❌ ${e.message}` }); }
+    finally { setValLoading(false); }
+  };
+
   const handleCreateUser = async () => {
     try {
       const resp = await apiCall("/admin/users", { method: "POST", body: JSON.stringify(newUser) }, token);
@@ -387,7 +429,7 @@ export default function CamrailApp() {
 
       {/* Tabs */}
       <div style={{ background: C.white, borderBottom: `2px solid ${C.light}` }}>
-        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex" }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           {tabs.map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               style={{ padding: "13px 20px", border: "none", background: "none", cursor: "pointer",
@@ -400,11 +442,11 @@ export default function CamrailApp() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "24px 16px" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: isMobile ? "12px 10px" : "24px 16px" }}>
 
         {/* ── PRÉDICTION ── */}
         {activeTab === "prediction" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
             <Card>
               <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 800 }}>📋 Paramètres de l'Incident</h3>
               <Field label="Heure info PCC" value={heurePCC} onChange={setHeurePCC} type="time" />
@@ -476,7 +518,7 @@ export default function CamrailApp() {
                     {result.heure_reprise && (
                       <Card>
                         <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800 }}>🕐 Heure de Reprise</h4>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
                           {[
                             { label: "Au plus tôt", value: result.heure_reprise_min, color: C.green },
                             { label: "Prédiction",  value: result.heure_reprise,     color: C.red },
@@ -527,6 +569,92 @@ export default function CamrailApp() {
                     >
                       📄 TÉLÉCHARGER LE RAPPORT PDF OFFICIEL
                     </Btn>
+
+                    {/* ── Valider la prédiction ── */}
+                    <Card style={{ background: C.light, border: `1.5px solid ${C.green}55`, borderRadius: 12 }}>
+                      <h4 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 800, color: C.green }}>
+                        ✅ Valider après rétablissement du canton
+                      </h4>
+                      <p style={{ margin: "0 0 14px", fontSize: 12, color: C.silver, lineHeight: 1.6 }}>
+                        Saisissez l'heure exacte de reprise. La durée réelle et l'écart sont calculés automatiquement.
+                      </p>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.steel, marginBottom: 5, textTransform: "uppercase" }}>
+                            Heure info PCC (début)
+                          </label>
+                          <input type="time" value={valForm.heure_pcc || heurePCC}
+                            onChange={e => setValForm(p => ({ ...p, heure_pcc: e.target.value }))}
+                            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: `1.5px solid ${C.light}`, fontSize: 14, color: C.navy, outline: "none", boxSizing: "border-box", background: C.white }} />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.steel, marginBottom: 5, textTransform: "uppercase" }}>
+                            Heure réelle de reprise ⭐
+                          </label>
+                          <input type="time" value={valForm.heure_reprise_reelle || ""}
+                            onChange={e => {
+                              const heureReprise = e.target.value;
+                              const hPCC = valForm.heure_pcc || heurePCC || "00:00";
+                              const [h1, m1] = hPCC.split(":").map(Number);
+                              const [h2, m2] = heureReprise.split(":").map(Number);
+                              let totalMin = (h2 * 60 + m2) - (h1 * 60 + m1);
+                              if (totalMin <= 0) totalMin += 24 * 60;
+                              const dureeReelle = parseFloat((totalMin / 60).toFixed(2));
+                              setValForm(p => ({
+                                ...p,
+                                heure_reprise_reelle: heureReprise,
+                                id_prediction: result.predicted_by,
+                                duree_predite: result.duree_heures,
+                                duree_reelle: dureeReelle,
+                                heure_reelle: heureReprise,
+                              }));
+                            }}
+                            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: `1.5px solid ${C.green}`, fontSize: 14, color: C.navy, outline: "none", boxSizing: "border-box", background: C.white }} />
+                        </div>
+                      </div>
+
+                      {valForm.duree_reelle > 0 && (
+                        <div style={{ background: C.white, borderRadius: 10, padding: "12px 16px", marginBottom: 12, border: `1.5px solid ${C.green}44` }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 10, color: C.silver, textTransform: "uppercase", fontWeight: 700, marginBottom: 2 }}>Durée réelle calculée</div>
+                              <div style={{ fontSize: 24, fontWeight: 900, color: C.green }}>{valForm.duree_reelle}h</div>
+                            </div>
+                            <div style={{ fontSize: 20, color: C.silver }}>vs</div>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 10, color: C.silver, textTransform: "uppercase", fontWeight: 700, marginBottom: 2 }}>Durée prédite</div>
+                              <div style={{ fontSize: 24, fontWeight: 900, color: C.red }}>{result.duree_heures}h</div>
+                            </div>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 10, color: C.silver, textTransform: "uppercase", fontWeight: 700, marginBottom: 2 }}>Écart</div>
+                              <div style={{ fontSize: 22, fontWeight: 900,
+                                color: Math.abs(valForm.duree_reelle - result.duree_heures) <= 2 ? C.green
+                                     : Math.abs(valForm.duree_reelle - result.duree_heures) <= 5 ? C.orange : C.red }}>
+                                {(valForm.duree_reelle - result.duree_heures) > 0 ? "+" : ""}{(valForm.duree_reelle - result.duree_heures).toFixed(1)}h
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.steel, marginBottom: 5, textTransform: "uppercase" }}>
+                          Commentaire (optionnel)
+                        </label>
+                        <input type="text" value={valForm.commentaire}
+                          onChange={e => setValForm(p => ({ ...p, commentaire: e.target.value }))}
+                          style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: `1.5px solid ${C.light}`, fontSize: 13, color: C.navy, outline: "none", boxSizing: "border-box" }}
+                          placeholder="Ex: Grues arrivées en retard, voie plus endommagée..." />
+                      </div>
+
+                      {valMsg && <Alert type={valMsg.type} message={valMsg.message} />}
+                      <Btn onClick={handleValider}
+                        disabled={valLoading || !valForm.duree_reelle || !valForm.heure_reprise_reelle}
+                        color={C.green} style={{ width: "100%", padding: 13, fontSize: 14 }}>
+                        {valLoading ? "⏳ Enregistrement..." : "✅ VALIDER LA PRÉDICTION"}
+                      </Btn>
+                    </Card>
                   </>
                 );
               })()}
@@ -536,7 +664,7 @@ export default function CamrailApp() {
 
         {/* ── RET ── */}
         {activeTab === "ret" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
             <Card>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800 }}>📝 Saisie RET Post-Incident</h3>
               <p style={{ margin: "0 0 16px", fontSize: 13, color: C.silver }}>Fonctionnalité 2 — Collecte des données après réouverture de la voie</p>
@@ -600,7 +728,7 @@ export default function CamrailApp() {
 
         {/* ── HISTORIQUES ── */}
         {activeTab === "historique" && (
-          <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr", gap: isMobile ? 14 : 20 }}>
             <Card>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                 <h3 style={{ margin:0, fontSize:16, fontWeight:800 }}>Incidents 2022–2026</h3>
@@ -671,7 +799,7 @@ export default function CamrailApp() {
 
         {/* ── MODÈLE ── */}
         {activeTab === "modele" && (
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
             <Card>
               <h3 style={{ margin:"0 0 16px", fontSize:16, fontWeight:800 }}>🤖 Architecture du Modèle</h3>
               {[
@@ -742,7 +870,7 @@ export default function CamrailApp() {
 
         {/* ── ADMINISTRATION ── */}
         {activeTab === "admin" && user?.role === "ADMIN" && (
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
             <Card>
               <h3 style={{ margin:"0 0 16px", fontSize:16, fontWeight:800 }}>👥 Utilisateurs du système</h3>
               {userMsg && <Alert type={userMsg.type} message={userMsg.message} />}
@@ -805,12 +933,123 @@ export default function CamrailApp() {
           </div>
         )}
 
+        {/* ── SUIVI & VALIDATION ── */}
+        {activeTab === "suivi" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+            {/* Stats globales */}
+            {predStats && (
+              <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap:12 }}>
+                {[
+                  { label:"Total prédictions",  value: predStats.total_validations || predHist?.stats?.total || 0, color: C.navy },
+                  { label:"Correctes (±2h)",     value: predStats.correct || 0,    color: C.green },
+                  { label:"Proches (±5h)",       value: predStats.proche || 0,     color: C.orange },
+                  { label:"Précision globale",   value: `${predStats.precision_globale || 0}%`, color: C.red },
+                ].map((s, i) => (
+                  <Card key={i} style={{ textAlign:"center" }}>
+                    <div style={{ fontSize:28, fontWeight:900, color:s.color }}>{s.value}</div>
+                    <div style={{ fontSize:11, color:C.silver, marginTop:4 }}>{s.label}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {predLoading2 && <Card style={{ textAlign:"center", padding:30 }}><div style={{ color:C.silver }}>⏳ Chargement...</div></Card>}
+
+            {predHist && !predLoading2 && (
+              <Card>
+                <h3 style={{ margin:"0 0 16px", fontSize:16, fontWeight:800 }}>
+                  📋 Historique détaillé des prédictions
+                </h3>
+                <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                    <thead>
+                      <tr style={{ background:C.navy }}>
+                        {["Date & Heure","Agent","Coordination","Véhicules","État voie","Durée prédite","Durée réelle","Écart","Statut"].map(h => (
+                          <th key={h} style={{ padding:"9px 10px", textAlign:"left", fontSize:10, fontWeight:700, color:C.white, textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {predHist.predictions.slice().reverse().map((p, i) => {
+                        const statutColor = p.validation_statut === "CORRECT" ? C.green
+                                          : p.validation_statut === "PROCHE"   ? C.orange
+                                          : p.validation_statut === "INCORRECT"? C.red
+                                          : C.silver;
+                        return (
+                          <tr key={i} style={{ borderBottom:`1px solid ${C.light}`, background: i%2===0 ? C.light+"66" : C.white }}>
+                            <td style={{ padding:"9px 10px", whiteSpace:"nowrap", color:C.steel, fontSize:11 }}>
+                              {p.predicted_at?.slice(0,16).replace("T"," ") || "—"}
+                            </td>
+                            <td style={{ padding:"9px 10px", fontWeight:700, color:C.navy }}>
+                              {p.predicted_by?.split("-").slice(3).join("-") || p.predicted_by || "—"}
+                            </td>
+                            <td style={{ padding:"9px 10px" }}>
+                              <Badge color={C.steel}>{p.coordination_label || "—"}</Badge>
+                            </td>
+                            <td style={{ padding:"9px 10px", textAlign:"center", fontWeight:700 }}>{p.nb_vehicules || "—"}</td>
+                            <td style={{ padding:"9px 10px" }}>{p.etat_label || "—"}</td>
+                            <td style={{ padding:"9px 10px", fontWeight:700, color:C.red }}>{p.duree_heures}h</td>
+                            <td style={{ padding:"9px 10px", fontWeight:700, color:C.green }}>
+                              {p.duree_reelle ? `${p.duree_reelle}h` : <span style={{ color:C.silver }}>En attente</span>}
+                            </td>
+                            <td style={{ padding:"9px 10px", fontWeight:700,
+                              color: p.ecart_heures > 0 ? C.orange : p.ecart_heures < 0 ? C.green : C.silver }}>
+                              {p.ecart_heures !== "" && p.ecart_heures !== undefined
+                                ? `${p.ecart_heures > 0 ? "+" : ""}${p.ecart_heures}h`
+                                : "—"}
+                            </td>
+                            <td style={{ padding:"9px 10px" }}>
+                              {p.validation_statut
+                                ? <Badge color={statutColor}>{p.validation_statut}</Badge>
+                                : <Badge color={C.silver}>EN ATTENTE</Badge>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {predHist.predictions.length === 0 && (
+                    <div style={{ textAlign:"center", padding:30, color:C.silver }}>
+                      Aucune prédiction enregistrée pour le moment.
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Légende */}
+            <Card>
+              <h4 style={{ margin:"0 0 12px", fontSize:14, fontWeight:800 }}>📖 Légende des statuts</h4>
+              <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap:12 }}>
+                {[
+                  { statut:"CORRECT",   color:C.green,  desc:"Écart ≤ 2h — Prédiction excellente" },
+                  { statut:"PROCHE",    color:C.orange, desc:"Écart ≤ 5h — Prédiction acceptable" },
+                  { statut:"INCORRECT", color:C.red,    desc:"Écart > 5h — À améliorer" },
+                ].map(s => (
+                  <div key={s.statut} style={{ padding:12, background:s.color+"11", borderRadius:8, border:`1px solid ${s.color}33` }}>
+                    <Badge color={s.color}>{s.statut}</Badge>
+                    <p style={{ margin:"8px 0 0", fontSize:12, color:C.steel }}>{s.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
       </div>
 
-      <div style={{ background:C.navy, padding:"14px 24px", marginTop:32, textAlign:"center" }}>
-        <p style={{ margin:0, color:C.silver, fontSize:12 }}>
-          CAMRAIL · FastAPI + JWT + Scikit-learn + Docker + Nginx · Programme Innovation Ferroviaire · v1.0
-        </p>
+      <div style={{ background:C.navy, padding:"14px 16px", marginTop:32 }}>
+        <div style={{ maxWidth:980, margin:"0 auto", display:"flex", alignItems:"center",
+          justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+          <div style={{ background: C.white, borderRadius: 6, padding: "4px 10px" }}>
+            <img src={CAMRAIL_LOGO_B64} alt="CAMRAIL" style={{ height: 24, width: "auto", display:"block" }} />
+          </div>
+          <p style={{ margin:0, color:C.silver, fontSize:10, textAlign:"center", flex:1 }}>
+            FastAPI · JWT · Scikit-learn · Docker · Nginx · Programme Innovation Ferroviaire · v1.0
+          </p>
+          <p style={{ margin:0, color:C.silver, fontSize:10 }}>Une concession de AGL</p>
+        </div>
       </div>
     </div>
   );
