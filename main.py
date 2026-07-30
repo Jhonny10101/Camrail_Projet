@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from typing import Optional
+from collections import defaultdict
 import pandas as pd
 import numpy as np
 import joblib, json, os
@@ -76,7 +77,9 @@ class PredictionResult(BaseModel):
     heure_reprise_max:     Optional[str]
     niveau_risque:         str
     feature_contributions: dict
+    id_prediction:         str
     predicted_by:          str
+    predicted_by_name:     str = ""
     predicted_at:          str
 
 class RETRecord(BaseModel):
@@ -223,7 +226,10 @@ async def predict(
         heure_reprise=hr, heure_reprise_min=hrm, heure_reprise_max=hrM,
         niveau_risque=get_niveau_risque(duree),
         feature_contributions=feat_contrib,
-        predicted_by=pred_id, predicted_at=now.isoformat(),
+        id_prediction=pred_id,
+        predicted_by=cu.username,
+        predicted_by_name=cu.full_name or cu.username,
+        predicted_at=now.isoformat(),
     )
 
 # ── VALIDATION ────────────────────────────────────────────────────
@@ -260,6 +266,10 @@ async def valider_prediction(
 
 @app.get("/predict/historique", tags=["Validation"])
 async def get_predictions_historique(
+    coordination: Optional[int] = None,
+    nom: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     cu: UserInDB = Depends(require_permission("historique")),
     db: Session = Depends(get_db),
 ):
@@ -267,23 +277,72 @@ async def get_predictions_historique(
     POS={1:"Tête",2:"Milieu",3:"Queue"}
     ETAT={1:"Léger",2:"Modéré",3:"Grave"}
     GRUE={1:"Proche",2:"Moyen",3:"Loin"}
-    preds = db.query(PredictionLog).order_by(PredictionLog.id.desc()).limit(50).all()
-    data  = [{"id_prediction":p.id_prediction,"predicted_by":p.predicted_by,
-              "predicted_at":p.predicted_at,"duree_heures":p.duree_heures,
-              "ic_min_heures":p.ic_min_heures,"ic_max_heures":p.ic_max_heures,
-              "niveau_risque":p.niveau_risque,"heure_reprise":p.heure_reprise,
-              "nb_vehicules":p.nb_vehicules,"coordination_label":COORD.get(p.coordination,""),
-              "position_label":POS.get(p.position_vehicule,""),"etat_label":ETAT.get(p.etat_voie,""),
-              "grue_label":GRUE.get(p.position_grues,""),"validation_statut":p.validation_statut or "",
-              "duree_reelle":p.duree_reelle,"ecart_heures":p.ecart_heures} for p in preds]
-    total=db.query(PredictionLog).count()
-    valides=db.query(PredictionLog).filter(PredictionLog.validation_statut!=None).all()
-    correct=sum(1 for v in valides if v.validation_statut=="CORRECT")
-    proche =sum(1 for v in valides if v.validation_statut=="PROCHE")
-    return {"predictions":data,"stats":{"total":total,"validees":len(valides),
-            "en_attente":total-len(valides),"correct":correct,"proche":proche,
-            "incorrect":len(valides)-correct-proche,
-            "precision_pct":round((correct+proche)/len(valides)*100,1) if valides else 0}}
+    VOIE={1:"Principale",2:"Secondaire"}
+    users_map = {u.username: u.full_name for u in load_users().values()}
+
+    q = db.query(PredictionLog)
+    if coordination:
+        q = q.filter(PredictionLog.coordination == coordination)
+    if nom:
+        needle = nom.strip().lower()
+        matching = [u for u, n in users_map.items()
+                    if needle in u.lower() or needle in (n or "").lower()]
+        if matching:
+            q = q.filter(PredictionLog.predicted_by.in_(matching))
+        else:
+            q = q.filter(PredictionLog.predicted_by.ilike(f"%{nom.strip()}%"))
+    if date_from:
+        q = q.filter(PredictionLog.predicted_at >= date_from)
+    if date_to:
+        # inclusive end-of-day
+        end = date_to if "T" in date_to else f"{date_to}T23:59:59"
+        q = q.filter(PredictionLog.predicted_at <= end)
+
+    preds = q.order_by(PredictionLog.id.desc()).limit(200).all()
+    data = []
+    for p in preds:
+        full_name = users_map.get(p.predicted_by, p.predicted_by or "")
+        data.append({
+            "id_prediction": p.id_prediction,
+            "predicted_by": p.predicted_by,
+            "predicted_by_name": full_name,
+            "predicted_at": p.predicted_at,
+            "duree_heures": p.duree_heures,
+            "ic_min_heures": p.ic_min_heures,
+            "ic_max_heures": p.ic_max_heures,
+            "niveau_risque": p.niveau_risque,
+            "heure_reprise": p.heure_reprise,
+            "heure_information_pcc": p.heure_information_pcc,
+            "nb_vehicules": p.nb_vehicules,
+            "heure_incident": p.heure_incident,
+            "coordination": p.coordination,
+            "coordination_label": COORD.get(p.coordination, ""),
+            "position_label": POS.get(p.position_vehicule, ""),
+            "etat_label": ETAT.get(p.etat_voie, ""),
+            "grue_label": GRUE.get(p.position_grues, ""),
+            "type_voie_label": VOIE.get(p.type_voie, ""),
+            "validation_statut": p.validation_statut or "",
+            "duree_reelle": p.duree_reelle,
+            "ecart_heures": p.ecart_heures,
+        })
+
+    total = db.query(PredictionLog).count()
+    valides = db.query(PredictionLog).filter(PredictionLog.validation_statut != None).all()
+    correct = sum(1 for v in valides if v.validation_statut == "CORRECT")
+    proche = sum(1 for v in valides if v.validation_statut == "PROCHE")
+    return {
+        "predictions": data,
+        "stats": {
+            "total": total,
+            "validees": len(valides),
+            "en_attente": total - len(valides),
+            "correct": correct,
+            "proche": proche,
+            "incorrect": len(valides) - correct - proche,
+            "precision_pct": round((correct + proche) / len(valides) * 100, 1) if valides else 0,
+            "filtered_count": len(data),
+        },
+    }
 
 @app.get("/predict/stats", tags=["Validation"])
 async def get_prediction_stats(
@@ -337,26 +396,125 @@ async def list_ret(cu: UserInDB=Depends(require_permission("historique")), db: S
 # ── HISTORIQUES ───────────────────────────────────────────────────
 @app.get("/historique", tags=["Historiques"])
 async def get_historique(
-    coordination: Optional[int]=None,
-    cu: UserInDB=Depends(require_permission("historique")),
-    db: Session=Depends(get_db),
+    coordination: Optional[int] = None,
+    nom: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    cu: UserInDB = Depends(require_permission("historique")),
+    db: Session = Depends(get_db),
 ):
-    q=db.query(RETDataset)
-    lq=db.query(RETLog)
+    COORD = {1: "Nord", 2: "Sud", 3: "Est", 4: "Ouest"}
+    POS = {1: "Tête", 2: "Milieu", 3: "Queue"}
+    ETAT = {1: "Léger", 2: "Modéré", 3: "Grave"}
+    GRUE = {1: "Proche", 2: "Moyen", 3: "Loin"}
+    VOIE = {1: "Principale", 2: "Secondaire"}
+    users_map = {u.username: u.full_name for u in load_users().values()}
+
+    q = db.query(RETDataset)
+    lq = db.query(RETLog)
     if coordination:
-        q=q.filter(RETDataset.coordination==coordination)
-        lq=lq.filter(RETLog.coordination==coordination)
-    recs=q.all(); logs=lq.all()
-    durees=[r.duree_occupation_heures for r in recs]+[r.duree_reelle_heures for r in logs]
-    total=len(recs)+len(logs)
-    par_coord={}
-    for r in recs+logs:
-        c=str(r.coordination); par_coord[c]=par_coord.get(c,0)+1
-    return {"stats_globales":{"total_incidents":total,
-        "duree_moyenne":round(sum(durees)/len(durees),1) if durees else 0,
-        "duree_max":round(max(durees),1) if durees else 0,
-        "duree_min":round(min(durees),1) if durees else 0,
-        "par_coordination":par_coord},"serie_mensuelle":[],"accessed_by":cu.username}
+        q = q.filter(RETDataset.coordination == coordination)
+        lq = lq.filter(RETLog.coordination == coordination)
+    if date_from:
+        q = q.filter(RETDataset.date_incident >= date_from)
+        lq = lq.filter(RETLog.date_incident >= date_from)
+    if date_to:
+        q = q.filter(RETDataset.date_incident <= date_to)
+        lq = lq.filter(RETLog.date_incident <= date_to)
+
+    recs = q.all()
+    logs = lq.all()
+
+    if nom:
+        needle = nom.strip().lower()
+        logs = [r for r in logs if needle in (r.submitted_by or "").lower()
+                or needle in (users_map.get(r.submitted_by, "") or "").lower()]
+
+    incidents = []
+    for r in logs:
+        incidents.append({
+            "source": "ret_log",
+            "id": r.id_ret,
+            "date_incident": r.date_incident,
+            "heure_incident": r.heure_incident,
+            "coordination": r.coordination,
+            "coordination_label": COORD.get(r.coordination, ""),
+            "type_voie_label": VOIE.get(r.type_voie, ""),
+            "nb_vehicules": r.nb_vehicules_derailles,
+            "position_label": POS.get(r.position_vehicule, ""),
+            "etat_label": ETAT.get(r.etat_voie, ""),
+            "grue_label": GRUE.get(r.position_grues, ""),
+            "duree_heures": r.duree_reelle_heures,
+            "faits_saillants": r.faits_saillants,
+            "cause_probable": r.cause_probable,
+            "submitted_by": r.submitted_by,
+            "submitted_by_name": users_map.get(r.submitted_by, r.submitted_by or ""),
+            "submitted_at": r.submitted_at,
+        })
+    # Dataset historique (pas de nom agent) — filtré seulement si pas de filtre nom
+    if not nom:
+        for r in recs:
+            incidents.append({
+                "source": "dataset",
+                "id": r.id_ret,
+                "date_incident": r.date_incident,
+                "heure_incident": r.heure_incident,
+                "coordination": r.coordination,
+                "coordination_label": COORD.get(r.coordination, ""),
+                "type_voie_label": VOIE.get(r.type_voie, ""),
+                "nb_vehicules": r.nb_vehicules_derailles,
+                "position_label": POS.get(r.position_vehicule, ""),
+                "etat_label": ETAT.get(r.etat_voie, ""),
+                "grue_label": GRUE.get(r.position_grues, ""),
+                "duree_heures": r.duree_occupation_heures,
+                "faits_saillants": None,
+                "cause_probable": None,
+                "submitted_by": None,
+                "submitted_by_name": "—",
+                "submitted_at": None,
+            })
+
+    incidents.sort(key=lambda x: (x.get("date_incident") or "", x.get("heure_incident") or 0), reverse=True)
+
+    durees = [i["duree_heures"] for i in incidents if i.get("duree_heures") is not None]
+    total = len(incidents)
+    par_coord = {}
+    for i in incidents:
+        c = str(i["coordination"])
+        par_coord[c] = par_coord.get(c, 0) + 1
+
+    # Série mensuelle
+    mensuel = defaultdict(list)
+    for i in incidents:
+        d = i.get("date_incident") or ""
+        if len(d) >= 7:
+            mensuel[d[:7]].append(i["duree_heures"])
+    serie = []
+    for mois in sorted(mensuel.keys(), reverse=True)[:24]:
+        vals = [v for v in mensuel[mois] if v is not None]
+        if not vals:
+            continue
+        serie.append({
+            "mois": mois,
+            "mois_label": mois,
+            "nb_incidents": len(vals),
+            "duree_moyenne": round(sum(vals) / len(vals), 1),
+            "duree_max": round(max(vals), 1),
+            "duree_min": round(min(vals), 1),
+        })
+
+    return {
+        "stats_globales": {
+            "total_incidents": total,
+            "duree_moyenne": round(sum(durees) / len(durees), 1) if durees else 0,
+            "duree_max": round(max(durees), 1) if durees else 0,
+            "duree_min": round(min(durees), 1) if durees else 0,
+            "par_coordination": par_coord,
+        },
+        "serie_mensuelle": serie,
+        "incidents": incidents[:200],
+        "accessed_by": cu.username,
+    }
 
 # ── MODÈLE ML ─────────────────────────────────────────────────────
 @app.get("/modele/info", tags=["Modèle ML"])
