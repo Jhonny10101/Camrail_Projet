@@ -46,5 +46,13 @@
     "coordination": null,
     "hashed_password": "$5$rounds=535000$QXlnvygalAI2FELe$pu0PDA4rVOdf9dW1jtKFSWveZXgoYqw93ie4C3foAN3",
     "disabled": false
+  },
+  {
+    "username": "Jhonny",
+    "full_name": "Omgba",
+    "role": "OPERATEUR",
+    "coordination": "Nord",
+    "hashed_password": "$5$rounds=535000$X8HKGo6vMlfaWrUT$EefvL7ONcAvkoiET4UIkBM56P1DVFU.Fxz0gGwgqPk0",
+    "disabled": false
   }
 ]

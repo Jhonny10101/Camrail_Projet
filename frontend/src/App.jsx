@@ -313,6 +313,31 @@ function formatDateTime(iso) {
   return s.length >= 16 ? s.slice(0, 16) : s;
 }
 
+// Calcule la durée réelle (en heures) entre l'heure d'info PCC et l'heure
+// réelle de reprise, en tenant compte des jours supplémentaires écoulés
+// (0 = même jour, 1 = lendemain, 2 = surlendemain, …). Sans cela, un incident
+// résolu après 24h+ était compté comme < 24h (voir bug initial sur
+// compute_heure_reprise côté backend).
+function computeDureeReelle(heurePcc, heureReprise, joursSupplementaires = 0) {
+  if (!heurePcc || !heureReprise) return null;
+  const [h1, m1] = heurePcc.split(":").map(Number);
+  const [h2, m2] = heureReprise.split(":").map(Number);
+  if ([h1, m1, h2, m2].some(Number.isNaN)) return null;
+  // Écart au sein des 24h (gère le passage de minuit "implicite").
+  let totalMin = ((h2 * 60 + m2) - (h1 * 60 + m1) + 24 * 60) % (24 * 60);
+  totalMin += Math.max(0, joursSupplementaires || 0) * 24 * 60;
+  return parseFloat((totalMin / 60).toFixed(2));
+}
+
+// Convertit une heure "HH:MM" (comme le sélecteur natif type="time") en
+// heure décimale (ex: "14:30" → 14.5) attendue par l'API et le modèle.
+function timeToDecimalHours(hhmm, fallback = 0) {
+  if (!hhmm) return fallback;
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return fallback;
+  return parseFloat((h + m / 60).toFixed(3));
+}
+
 function FilterBar({ filters, setFilters, showName = true, onApply, onReset }) {
   const { t } = useLang();
   const isMobile = useIsMobile();
@@ -708,7 +733,7 @@ export default function CamrailApp() {
 
   const [inputs, setInputs] = useState({
     nbVehicules: 2, positionVehicule: 1, etatVoie: 2,
-    positionGrues: 2, typeVoie: 1, heureIncident: 10, coordination: 1,
+    positionGrues: 2, typeVoie: 1, heureIncident: "10:00", coordination: 1,
   });
   const [heurePCC, setHeurePCC] = useState("08:00");
   const [result, setResult] = useState(null);
@@ -734,7 +759,7 @@ export default function CamrailApp() {
 
   const [retForm, setRetForm] = useState({
     date_incident: new Date().toISOString().split("T")[0],
-    heure_incident: 10, coordination: 1, type_voie: 1,
+    heure_incident: "10:00", coordination: 1, type_voie: 1,
     nb_vehicules_derailles: 2, position_vehicule: 1,
     etat_voie: 2, position_grues: 2, duree_reelle_heures: 20,
     faits_saillants: "", cause_probable: "",
@@ -745,6 +770,7 @@ export default function CamrailApp() {
   const [valForm, setValForm] = useState({
     id_prediction: "", duree_predite: 0, duree_reelle: 0,
     heure_reelle: "", commentaire: "", heure_pcc: "", heure_reprise_reelle: "",
+    jours_supplementaires: 0,
   });
   const [valMsg, setValMsg] = useState(null);
   const [valLoading, setValLoading] = useState(false);
@@ -827,7 +853,7 @@ export default function CamrailApp() {
         etat_voie: inputs.etatVoie,
         position_grues: inputs.positionGrues,
         type_voie: inputs.typeVoie,
-        heure_incident: inputs.heureIncident,
+        heure_incident: timeToDecimalHours(inputs.heureIncident, 0),
         coordination: inputs.coordination,
         heure_information_pcc: heurePCC || null,
       };
@@ -837,6 +863,9 @@ export default function CamrailApp() {
         id_prediction: data.id_prediction, duree_predite: data.duree_heures,
         duree_reelle: 0, heure_reelle: "", commentaire: "",
         heure_pcc: heurePCC, heure_reprise_reelle: "",
+        // Pré-rempli à partir de la durée prédite : évite qu'un opérateur
+        // oublie de préciser "J+1"/"J+2" pour un incident qui dure > 24h.
+        jours_supplementaires: Math.max(0, Math.floor((data.duree_heures - 1) / 24)),
       });
     } catch (e) { setPredError(e.message); }
     finally { setPredLoading(false); }
@@ -862,7 +891,8 @@ export default function CamrailApp() {
   const handleRetSubmit = async () => {
     setRetLoading(true); setRetMsg(null);
     try {
-      const resp = await apiCall("/ret/submit", { method: "POST", body: JSON.stringify(retForm) }, token);
+      const body = { ...retForm, heure_incident: timeToDecimalHours(retForm.heure_incident, 0) };
+      const resp = await apiCall("/ret/submit", { method: "POST", body: JSON.stringify(body) }, token);
       setRetMsg({ type: "success", message: resp.message });
     } catch (e) { setRetMsg({ type: "error", message: e.message }); }
     finally { setRetLoading(false); }
@@ -993,8 +1023,8 @@ export default function CamrailApp() {
                 <Select label={t("coordination")} value={inputs.coordination} onChange={si("coordination")} options={coordOpts()} />
                 <div style={{ marginBottom: 14 }}>
                   <label style={lbl}>{t("incidentHour")}</label>
-                  <input type="number" min={0} max={23} value={inputs.heureIncident}
-                    onChange={e => si("heureIncident")(Number(e.target.value))} style={inp} />
+                  <input type="time" value={inputs.heureIncident}
+                    onChange={e => si("heureIncident")(e.target.value)} style={inp} />
                 </div>
                 {predError && <Alert type="error" message={predError} />}
                 <Btn onClick={handlePredict} disabled={predLoading} style={{ width: "100%", padding: 14 }}>
@@ -1116,7 +1146,16 @@ export default function CamrailApp() {
                           <div>
                             <label style={lbl}>{t("startPcc")}</label>
                             <input type="time" value={valForm.heure_pcc || heurePCC}
-                              onChange={e => setValForm(p => ({ ...p, heure_pcc: e.target.value }))} style={{ ...inp, background: C.white }} />
+                              onChange={e => {
+                                const hPCC = e.target.value;
+                                const dureeReelle = computeDureeReelle(hPCC, valForm.heure_reprise_reelle, valForm.jours_supplementaires);
+                                setValForm(p => ({
+                                  ...p, heure_pcc: hPCC,
+                                  id_prediction: result.id_prediction,
+                                  duree_predite: result.duree_heures,
+                                  ...(dureeReelle != null ? { duree_reelle: dureeReelle } : {}),
+                                }));
+                              }} style={{ ...inp, background: C.white }} />
                           </div>
                           <div>
                             <label style={lbl}>{t("realResume")}</label>
@@ -1124,19 +1163,31 @@ export default function CamrailApp() {
                               onChange={e => {
                                 const heureReprise = e.target.value;
                                 const hPCC = valForm.heure_pcc || heurePCC || "00:00";
-                                const [h1, m1] = hPCC.split(":").map(Number);
-                                const [h2, m2] = heureReprise.split(":").map(Number);
-                                let totalMin = (h2 * 60 + m2) - (h1 * 60 + m1);
-                                if (totalMin <= 0) totalMin += 24 * 60;
-                                const dureeReelle = parseFloat((totalMin / 60).toFixed(2));
+                                const dureeReelle = computeDureeReelle(hPCC, heureReprise, valForm.jours_supplementaires);
                                 setValForm(p => ({
                                   ...p, heure_reprise_reelle: heureReprise,
                                   id_prediction: result.id_prediction,
                                   duree_predite: result.duree_heures,
-                                  duree_reelle: dureeReelle, heure_reelle: heureReprise,
+                                  duree_reelle: dureeReelle ?? 0, heure_reelle: heureReprise,
                                 }));
                               }}
                               style={{ ...inp, border: `1.5px solid ${C.green}`, background: C.white }} />
+                          </div>
+                          <div>
+                            <label style={lbl}>{t("extraDays")}</label>
+                            <input type="number" min={0} max={10} step={1}
+                              value={valForm.jours_supplementaires ?? 0}
+                              onChange={e => {
+                                const jours = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                const hPCC = valForm.heure_pcc || heurePCC || "00:00";
+                                const dureeReelle = computeDureeReelle(hPCC, valForm.heure_reprise_reelle, jours);
+                                setValForm(p => ({
+                                  ...p, jours_supplementaires: jours,
+                                  ...(dureeReelle != null ? { duree_reelle: dureeReelle } : {}),
+                                }));
+                              }}
+                              style={{ ...inp, background: C.white }} />
+                            <div style={{ fontSize: 11, color: C.silver, marginTop: 4 }}>{t("extraDaysHint")}</div>
                           </div>
                         </div>
                         {valForm.duree_reelle > 0 && (
@@ -1196,8 +1247,8 @@ export default function CamrailApp() {
                 <Field label={t("dateIncident")} value={retForm.date_incident} onChange={sf("date_incident")} type="date" />
                 <div style={{ marginBottom: 14 }}>
                   <label style={lbl}>{t("incidentHour")}</label>
-                  <input type="number" min={0} max={23} value={retForm.heure_incident}
-                    onChange={e => sf("heure_incident")(Number(e.target.value))} style={inp} />
+                  <input type="time" value={retForm.heure_incident}
+                    onChange={e => sf("heure_incident")(e.target.value)} style={inp} />
                 </div>
                 <Select label={t("coordination")} value={retForm.coordination} onChange={sf("coordination")} options={coordOpts()} />
                 <Select label={t("trackType")} value={retForm.type_voie} onChange={sf("type_voie")}
@@ -1651,7 +1702,7 @@ export default function CamrailApp() {
                     { value: "CELLULE_CRISE", label: "CELLULE_CRISE" },
                     { value: "ADMIN", label: "ADMIN" },
                   ]} />
-                <Field label={t("coordOpt")} value={newUser.coordination} onChange={sn("coordination")} placeholder="Nord / Sud / Est / Ouest" />
+                <Field label={t("coordOpt")} value={newUser.coordination} onChange={sn("coordination")} placeholder="Littoral / Centre / Est / Nord" />
                 <Btn onClick={handleCreateUser} color={C.navy} style={{ width: "100%", padding: 13 }}>
                   <IconLabel icon="userPlus">{t("createBtn")}</IconLabel>
                 </Btn>

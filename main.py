@@ -63,7 +63,7 @@ class PredictionInput(BaseModel):
     etat_voie:              int   = Field(..., ge=1, le=3)
     position_grues:         int   = Field(..., ge=1, le=3)
     type_voie:              int   = Field(..., ge=1, le=2)
-    heure_incident:         int   = Field(..., ge=0, le=23)
+    heure_incident:         float = Field(..., ge=0, lt=24)
     coordination:           int   = Field(..., ge=1, le=4)
     heure_information_pcc:  Optional[str] = None
 
@@ -85,7 +85,7 @@ class PredictionResult(BaseModel):
 class RETRecord(BaseModel):
     id_ret:                 Optional[str] = None
     date_incident:          str
-    heure_incident:         int   = Field(..., ge=0, le=23)
+    heure_incident:         float = Field(..., ge=0, lt=24)
     coordination:           int   = Field(..., ge=1, le=4)
     type_voie:              int   = Field(..., ge=1, le=2)
     nb_vehicules_derailles: int   = Field(..., ge=1)
@@ -112,10 +112,19 @@ class CreateUserRequest(BaseModel):
 
 # ── Utilitaires ───────────────────────────────────────────────────
 def compute_heure_reprise(heure_pcc, duree_h):
+    """Calcule l'heure de reprise à partir de l'heure d'info PCC et de la durée (h).
+    Si la reprise tombe le lendemain (ou plus tard), le nombre de jours écoulés
+    est ajouté au format "HH:MM (J+n)" pour lever toute ambiguïté sur les
+    durées > 24h ou > 48h."""
     try:
         h, m  = map(int, heure_pcc.split(":"))
-        total = h * 60 + m + int(duree_h * 60)
-        return f"{(total//60)%24:02d}:{total%60:02d}"
+        total = h * 60 + m + int(round(duree_h * 60))
+        jours = total // (24 * 60)
+        reste = total % (24 * 60)
+        heure_str = f"{reste//60:02d}:{reste%60:02d}"
+        if jours >= 1:
+            heure_str += f" (J+{jours})"
+        return heure_str
     except:
         return None
 
@@ -213,7 +222,9 @@ async def predict(
             nb_vehicules=inp.nb_vehicules_derailles,
             position_vehicule=inp.position_vehicule, etat_voie=inp.etat_voie,
             position_grues=inp.position_grues, type_voie=inp.type_voie,
-            heure_incident=inp.heure_incident, coordination=inp.coordination,
+            # Colonne SQL en entier : on arrondit uniquement pour le log/historique,
+            # le modèle reçoit lui l'heure précise (inp.heure_incident) via input_to_df().
+            heure_incident=int(round(inp.heure_incident)), coordination=inp.coordination,
         ))
         db.commit()
     except Exception as e:
@@ -273,7 +284,7 @@ async def get_predictions_historique(
     cu: UserInDB = Depends(require_permission("historique")),
     db: Session = Depends(get_db),
 ):
-    COORD={1:"Nord",2:"Sud",3:"Est",4:"Ouest"}
+    COORD={1:"Littoral",2:"Centre",3:"Est",4:"Nord"}
     POS={1:"Tête",2:"Milieu",3:"Queue"}
     ETAT={1:"Léger",2:"Modéré",3:"Grave"}
     GRUE={1:"Proche",2:"Moyen",3:"Loin"}
@@ -372,7 +383,7 @@ async def submit_ret(
     except: mois=saison=None
     try:
         db.add(RETLog(id_ret=record.id_ret,date_incident=record.date_incident,
-            heure_incident=record.heure_incident,coordination=record.coordination,
+            heure_incident=int(round(record.heure_incident)),coordination=record.coordination,
             type_voie=record.type_voie,nb_vehicules_derailles=record.nb_vehicules_derailles,
             position_vehicule=record.position_vehicule,etat_voie=record.etat_voie,
             position_grues=record.position_grues,duree_reelle_heures=record.duree_reelle_heures,
@@ -403,7 +414,7 @@ async def get_historique(
     cu: UserInDB = Depends(require_permission("historique")),
     db: Session = Depends(get_db),
 ):
-    COORD = {1: "Nord", 2: "Sud", 3: "Est", 4: "Ouest"}
+    COORD = {1: "Littoral", 2: "Centre", 3: "Est", 4: "Nord"}
     POS = {1: "Tête", 2: "Milieu", 3: "Queue"}
     ETAT = {1: "Léger", 2: "Modéré", 3: "Grave"}
     GRUE = {1: "Proche", 2: "Moyen", 3: "Loin"}
